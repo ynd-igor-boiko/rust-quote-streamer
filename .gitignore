@@ -1,0 +1,25 @@
+# === Rust & Cargo ===
+/target
+**/*.rs.bk
+**/*.swp
+**/*.swo
+Cargo.lock
+
+# === IDEs ===
+# VS Code
+.vscode/
+
+# JetBrains (CLion, IntelliJ)
+.idea/
+
+# === System / OS ===
+.DS_Store
+Thumbs.db
+
+# === Environment / Logs ===
+.env
+*.log
+
+# === Backup / Temp ===
+*.tmp
+*.bak
