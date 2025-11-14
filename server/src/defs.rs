@@ -1,0 +1,4 @@
+pub const VOLATILITY: f64 = 0.000082;
+pub const SERVER_TICK_PERIOD_MSEC: u64 = 200;
+pub const QUOTE_UPDATE_RETRY_PERIOD_MSEC: u64 = 10;
+pub const WRITE_TIMEOUT_MS: u64 = 1000;

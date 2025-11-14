@@ -17,3 +17,13 @@ impl From<NormalError> for QuoteGeneratorError {
         QuoteGeneratorError::DistributionError(err)
     }
 }
+
+#[derive(Error, Debug)]
+pub enum QuoteServerError {
+    #[error("Invalid Quote Server config: {0}")]
+    InvalidConfig(String),
+    #[error("Failed to initialize Quote Server: {0}")]
+    InitializationError(String),
+    #[error("Failed to update quotes: {0}")]
+    UpdateQuoteError(String),
+}

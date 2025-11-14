@@ -1,8 +1,8 @@
 use crate::errors::QuoteGeneratorError;
 use crate::stock_quote::StockQuote;
 
+use rand::SeedableRng;
 use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use rand_distr::{Distribution, LogNormal};
 use rayon::prelude::*;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -11,6 +11,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 ///
 /// This generator updates stock quotes in parallel using [`rayon`].
 /// Each thread creates its own RNG (`StdRng`), ensuring thread safety.
+#[derive(Debug)]
 pub struct QuoteGenerator {
     /// Volatility (standard deviation) of the log-normal price distribution.
     volatility: f64,

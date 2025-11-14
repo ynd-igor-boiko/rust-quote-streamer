@@ -1,3 +1,5 @@
+use std::time::{SystemTime, UNIX_EPOCH};
+
 /// Represents a single stock quote.
 #[derive(Clone, Debug)]
 pub struct StockQuote {
@@ -12,6 +14,20 @@ pub struct StockQuote {
 }
 
 impl StockQuote {
+    pub fn new(ticker: &str) -> Self {
+        StockQuote {
+            ticker: ticker.to_string(),
+            // random initial price
+            price: rand::random::<f64>() * 1000.0,
+            // initial volume is zero
+            volume: 0,
+            timestamp: SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64,
+        }
+    }
+
     pub fn to_string(&self) -> String {
         format!(
             "{}|{}|{}|{}",
