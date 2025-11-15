@@ -17,6 +17,8 @@ use std::time::{Duration, Instant};
 pub struct QuoteServer {
     quotes: Arc<RwLock<HashMap<String, StockQuote>>>,
     generator: QuoteGenerator,
+    // clients: Arc<Mutex<HashMap<u64, Client>>>,
+    // clients_count: Atomic<u64>,
 }
 
 impl QuoteServer {
@@ -57,6 +59,22 @@ impl QuoteServer {
             }
         }
     }
+
+    // pub fn add_client(
+    //     &mut self,
+    //     tickers: Vector<String>,
+    //     callback: Arc<dyn Fn(String) -> Result<(), ClientError> + Send + Sync + 'static>,
+    // ) {
+    //     let mut lock = clients.lock();
+    //     let new_client = Client::new(tickers, quotes.clone(), callback);
+    //     new_client.start()?;
+    //     lock.insert(clients_count++, new_client);
+    // }
+
+    // pub fn delete_client(id: Atomic<u64>) {
+    //     let mut lock = clients.lock();
+    //     lock.at(id).send()
+    // }
 
     fn update_quotes(&mut self) -> Result<(), QuoteServerError> {
         let start = Instant::now();

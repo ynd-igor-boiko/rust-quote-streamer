@@ -10,7 +10,7 @@ use std::sync::{
 use std::thread;
 
 /// Commands sent from the server to a client thread
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ClientCommand {
     /// Trigger a callback execution (i.e. process updated quotes)
     Update,
@@ -35,6 +35,10 @@ pub struct Client {
     /// Sender to control the client loop (send Update/Shutdown)
     tx: Option<Sender<ClientCommand>>,
 
+    /// Handle to the background thread running the client loop.
+    /// Stored internally to allow joining the thread when shutting down.
+    thread_handle: Option<thread::JoinHandle<()>>,
+
     /// User-provided callback executed for each ticker update.
     /// The callback receives JSON string and must return Result<(), ClientError>.
     callback: Arc<dyn Fn(String) -> Result<(), ClientError> + Send + Sync + 'static>,
@@ -52,6 +56,7 @@ impl Client {
             tickers,
             quotes,
             tx: None,
+            thread_handle: None,
             callback: Arc::new(callback),
         }
     }
@@ -64,7 +69,7 @@ impl Client {
     /// - `rx` is moved into the spawned thread
     ///
     /// Returns the thread JoinHandle.
-    pub fn start(&mut self) -> Result<thread::JoinHandle<()>, ClientError> {
+    pub fn start(&mut self) -> Result<(), ClientError> {
         let (tx, rx) = channel();
         self.tx = Some(tx.clone());
 
@@ -95,20 +100,45 @@ impl Client {
                 }
             }
         });
-
-        Ok(handle)
+        self.thread_handle = Some(handle);
+        Ok(())
     }
 
-    /// Send a command to the client loop
-    pub fn send(&self, cmd: ClientCommand) -> Result<(), ClientError> {
+    /// Send a command to the client loop.
+    /// If the command is `Shutdown`, this method will also wait for the
+    /// background thread to finish and clean up internal resources.
+    pub fn send(&mut self, cmd: ClientCommand) -> Result<(), ClientError> {
+        match &self.tx {
+            Some(tx) => {
+                tx.send(cmd.clone()).map_err(|e| {
+                    ClientError::InitializationError(format!("Failed to send command: {}", e))
+                })?;
+
+                if matches!(cmd, ClientCommand::Shutdown) {
+                    // Wait for thread to finish and clean up
+                    if let Some(handle) = self.thread_handle.take() {
+                        let _ = handle.join();
+                    }
+                    self.tx = None; // Prevent further sends
+                }
+
+                Ok(())
+            }
+            None => Err(ClientError::InitializationError(
+                "Client loop not started or already shutdown".into(),
+            )),
+        }
+    }
+}
+
+impl Drop for Client {
+    fn drop(&mut self) {
         if let Some(tx) = &self.tx {
-            tx.send(cmd).map_err(|e| {
-                ClientError::InitializationError(format!("Failed to send command: {}", e))
-            })
-        } else {
-            Err(ClientError::InitializationError(
-                "Client loop not started yet".into(),
-            ))
+            let _ = tx.send(ClientCommand::Shutdown);
+        }
+
+        if let Some(handle) = self.thread_handle.take() {
+            let _ = handle.join();
         }
     }
 }
@@ -153,7 +183,6 @@ mod tests {
         assert!(msg.contains("\"timestamp\":123456"));
 
         client.send(ClientCommand::Shutdown).unwrap();
-        handle.join().unwrap();
     }
 
     #[test]
@@ -180,7 +209,6 @@ mod tests {
         assert!(result[0].contains("\"ticker\":\"MSFT\""));
 
         client.send(ClientCommand::Shutdown).unwrap();
-        handle.join().unwrap();
     }
 
     #[test]
@@ -192,7 +220,6 @@ mod tests {
         client.send(ClientCommand::Shutdown).unwrap();
         thread::sleep(Duration::from_millis(20));
 
-        handle.join().unwrap();
         assert!(true);
     }
 }
