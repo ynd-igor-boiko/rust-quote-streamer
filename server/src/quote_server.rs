@@ -125,7 +125,7 @@ impl QuoteServer {
         for client in clients.values_mut() {
             client
                 .send(ClientCommand::Update)
-                .map_err(|e| QuoteServerError::UpdateQuoteError(e.to_string()));
+                .map_err(|e| QuoteServerError::UpdateQuoteError(e.to_string()))?;
         }
         Ok(())
     }
