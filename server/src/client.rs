@@ -3,7 +3,10 @@ use crate::stock_quote::StockQuote;
 
 use serde_json::json;
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock, mpsc::Receiver};
+use std::sync::{
+    Arc, Mutex, RwLock,
+    mpsc::{Receiver, channel},
+};
 use std::thread;
 
 /// Commands sent from the server to a client thread
@@ -53,42 +56,55 @@ impl Client {
         }
     }
 
-    /// Start the client loop in a new background thread.
-    /// The loop terminates only when:
-    ///   - A Shutdown command is received
-    ///   - The sender side is dropped (channel error)
-    pub fn start(self) {
-        thread::spawn(move || {
+    /// Start the client loop in a background thread.
+    ///
+    /// This function launches the client loop in a new thread. It returns a `JoinHandle`
+    /// so that the caller can join the thread later if needed.
+    ///
+    /// Internally, it uses a channel to immediately signal back to the caller
+    /// that the loop has started. This ensures that the client is ready to receive
+    /// update or shutdown commands.
+    ///
+    /// # Returns
+    /// - `Ok(JoinHandle<()>)` if the loop started successfully
+    /// - `Err(ClientError)` if the loop failed to signal startup
+    pub fn start(self) -> Result<thread::JoinHandle<()>, ClientError> {
+        // Channel to signal that the loop started
+        let (started_tx, started_rx) = channel();
+
+        let handle = thread::spawn(move || {
+            // Immediately signal that the loop has started
+            let _ = started_tx.send(());
+
             loop {
                 match self.rx.recv() {
-                    // Server requests to generate updates
                     Ok(ClientCommand::Update) => {
-                        // Acquire read-lock on global quotes storage
                         if let Ok(all_quotes) = self.quotes.read() {
-                            // Emit JSON only for subscribed tickers
                             for ticker in &self.tickers {
                                 if let Some(q) = all_quotes.get(ticker) {
-                                    let msg = json!({
+                                    let msg = serde_json::json!({
                                         "ticker": q.ticker,
                                         "price": q.price,
                                         "volume": q.volume,
                                         "timestamp": q.timestamp,
                                     });
-                                    // todo: log error
-                                    // Call user callback (ignore errors for now)
                                     let _ = (self.callback)(msg.to_string());
                                 }
                             }
                         }
                     }
-
-                    // Graceful shutdown or channel closed
-                    Ok(ClientCommand::Shutdown) | Err(_) => {
-                        break;
-                    }
+                    Ok(ClientCommand::Shutdown) | Err(_) => break,
                 }
             }
         });
+
+        // Wait for signal that the client loop started
+        match started_rx.recv() {
+            Ok(_) => Ok(handle),
+            Err(RecvError) => Err(ClientError::InitializationError(
+                "Client loop channel disconnected".into(),
+            )),
+        }
     }
 }
 
@@ -123,7 +139,7 @@ mod tests {
             Ok(())
         });
 
-        client.start();
+        let _ = client.start();
 
         // Send update event
         tx.send(ClientCommand::Update).unwrap();
@@ -165,7 +181,7 @@ mod tests {
             },
         );
 
-        client.start();
+        let _ = client.start();
         tx.send(ClientCommand::Update).unwrap();
         std::thread::sleep(std::time::Duration::from_millis(50));
 
@@ -182,7 +198,7 @@ mod tests {
 
         let client = Client::new(vec![], quotes.clone(), rx, |_json| Ok(()));
 
-        client.start();
+        let _ = client.start();
 
         // Ask the client to terminate
         tx.send(ClientCommand::Shutdown).unwrap();

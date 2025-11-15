@@ -33,4 +33,6 @@ pub enum QuoteServerError {
 pub enum ClientError {
     #[error("Callback returned an error: {0}")]
     CallbackFailed(String),
+    #[error("Failed to initialize client loop: {0}")]
+    InitializationError(String),
 }
