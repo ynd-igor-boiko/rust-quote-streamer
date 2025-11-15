@@ -1,3 +1,4 @@
+use crate::client::Client;
 use crate::defs::{
     QUOTE_UPDATE_RETRY_PERIOD_MSEC, SERVER_TICK_PERIOD_MSEC, VOLATILITY, WRITE_TIMEOUT_MS,
 };

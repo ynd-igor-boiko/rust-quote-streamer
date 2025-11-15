@@ -27,3 +27,10 @@ pub enum QuoteServerError {
     #[error("Failed to update quotes: {0}")]
     UpdateQuoteError(String),
 }
+
+/// Possible client-side errors (primarily callback failures)
+#[derive(Error, Debug)]
+pub enum ClientError {
+    #[error("Callback returned an error: {0}")]
+    CallbackFailed(String),
+}
