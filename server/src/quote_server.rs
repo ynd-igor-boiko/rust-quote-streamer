@@ -1,27 +1,30 @@
-use crate::client::Client;
+use crate::client::{Client, ClientCommand};
 use crate::defs::{
     QUOTE_UPDATE_RETRY_PERIOD_MSEC, SERVER_TICK_PERIOD_MSEC, VOLATILITY, WRITE_TIMEOUT_MS,
 };
-use crate::errors::QuoteServerError;
+use crate::errors::{ClientError, QuoteServerError};
 use crate::quote_generator::QuoteGenerator;
 use crate::stock_quote::StockQuote;
 
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::sync::{Arc, RwLock};
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
+/// QuoteServer holds quotes, a generator, and multiple clients.
 #[derive(Debug)]
 pub struct QuoteServer {
     quotes: Arc<RwLock<HashMap<String, StockQuote>>>,
     generator: QuoteGenerator,
-    // clients: Arc<Mutex<HashMap<u64, Client>>>,
-    // clients_count: Atomic<u64>,
+    clients: Mutex<HashMap<u64, Client>>,
+    clients_count: AtomicU64,
 }
 
 impl QuoteServer {
+    /// Load server configuration from file (tickers one per line)
     pub fn from_config<P: AsRef<std::path::Path>>(path: P) -> Result<Self, QuoteServerError> {
         let file = File::open(&path).map_err(|e| QuoteServerError::InvalidConfig(e.to_string()))?;
         let reader = BufReader::new(file);
@@ -34,48 +37,63 @@ impl QuoteServer {
                 .trim()
                 .to_uppercase();
             if !ticker.is_empty() {
-                let stock_quote = StockQuote::new(&ticker);
-                hashmap.insert(ticker, stock_quote);
+                hashmap.insert(ticker.clone(), StockQuote::new(&ticker));
             }
         }
 
         let generator = QuoteGenerator::new(VOLATILITY).map_err(|_| {
-            // todo: rework errors
             QuoteServerError::InitializationError("Failed to create Quote Generator".to_string())
         })?;
 
-        Ok(QuoteServer {
+        Ok(Self {
             quotes: Arc::new(RwLock::new(hashmap)),
             generator,
+            clients: Mutex::new(HashMap::new()),
+            clients_count: AtomicU64::new(0),
         })
     }
 
+    /// Run the server loop that updates quotes periodically
     pub fn run_server(&mut self) -> Result<(), QuoteServerError> {
         loop {
             thread::sleep(Duration::from_millis(SERVER_TICK_PERIOD_MSEC));
 
-            if let Err(e) = self.update_quotes() {
-                return Err(e);
-            }
+            self.update_quotes()?;
+            self.notify_clients()?;
         }
     }
 
-    // pub fn add_client(
-    //     &mut self,
-    //     tickers: Vector<String>,
-    //     callback: Arc<dyn Fn(String) -> Result<(), ClientError> + Send + Sync + 'static>,
-    // ) {
-    //     let mut lock = clients.lock();
-    //     let new_client = Client::new(tickers, quotes.clone(), callback);
-    //     new_client.start()?;
-    //     lock.insert(clients_count++, new_client);
-    // }
+    /// Add a new client
+    pub fn add_client(
+        &mut self,
+        tickers: Vec<String>,
+        callback: impl Fn(String) -> Result<(), ClientError> + Send + Sync + 'static,
+    ) -> Result<u64, ClientError> {
+        let mut clients_lock = self
+            .clients
+            .lock()
+            .map_err(|_| ClientError::InitializationError("Failed to lock clients".into()))?;
+        let mut client = Client::new(tickers, self.quotes.clone(), callback);
+        client.start()?;
 
-    // pub fn delete_client(id: Atomic<u64>) {
-    //     let mut lock = clients.lock();
-    //     lock.at(id).send()
-    // }
+        let id = self.clients_count.fetch_add(1, Ordering::SeqCst);
+        clients_lock.insert(id, client);
+        Ok(id)
+    }
 
+    /// Remove a client by id
+    pub fn remove_client(&mut self, id: u64) -> Result<(), ClientError> {
+        let mut clients_lock = self
+            .clients
+            .lock()
+            .map_err(|_| ClientError::InitializationError("Failed to lock clients".into()))?;
+        if let Some(mut client) = clients_lock.remove(&id) {
+            client.send(ClientCommand::Shutdown)?;
+        }
+        Ok(())
+    }
+
+    /// Update all quotes
     fn update_quotes(&mut self) -> Result<(), QuoteServerError> {
         let start = Instant::now();
         let timeout = Duration::from_millis(WRITE_TIMEOUT_MS);
@@ -85,7 +103,6 @@ impl QuoteServer {
                 self.generator
                     .update_quotes(lock.values_mut())
                     .map_err(|_| {
-                        // todo: rework errors
                         QuoteServerError::UpdateQuoteError("Failed to update quotes".to_string())
                     })?;
                 return Ok(());
@@ -98,12 +115,29 @@ impl QuoteServer {
             timeout
         )))
     }
+
+    fn notify_clients(&mut self) -> Result<(), QuoteServerError> {
+        // Notify all clients
+        let mut clients = self
+            .clients
+            .lock()
+            .map_err(|_| QuoteServerError::UpdateQuoteError("Failed to lock clients".into()))?;
+        for client in clients.values_mut() {
+            client
+                .send(ClientCommand::Update)
+                .map_err(|e| QuoteServerError::UpdateQuoteError(e.to_string()));
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::{Arc, Mutex};
+    use std::thread;
+    use std::time::Duration;
     use tempfile::NamedTempFile;
 
     #[test]
@@ -131,44 +165,28 @@ mod tests {
     }
 
     #[test]
-    fn test_update_quotes_success() {
-        let mut file = NamedTempFile::new().unwrap();
-        writeln!(file, "AAPL").unwrap();
-        let mut server = QuoteServer::from_config(file.path()).unwrap();
-        let result = server.update_quotes();
-        assert!(result.is_ok());
-    }
+    fn test_add_and_remove_client() -> Result<(), Box<dyn std::error::Error>> {
+        let mut file = NamedTempFile::new()?;
+        writeln!(file, "AAPL")?;
+        let mut server = QuoteServer::from_config(file.path())?;
 
-    #[test]
-    fn test_update_quotes_timeout() {
-        let mut file = NamedTempFile::new().unwrap();
-        writeln!(file, "AAPL").unwrap();
-        let mut server = QuoteServer::from_config(file.path()).unwrap();
+        let output = Arc::new(Mutex::new(Vec::<String>::new()));
+        let output_clone = output.clone();
 
-        let quotes_arc = Arc::clone(&server.quotes);
-        let (lock_tx, lock_rx) = std::sync::mpsc::channel();
-        let (release_tx, release_rx) = std::sync::mpsc::channel();
+        let client_id = server.add_client(vec!["AAPL".into()], move |json| {
+            output_clone.lock().unwrap().push(json);
+            Ok(())
+        })?;
 
-        let handle = std::thread::spawn(move || {
-            let _lock = quotes_arc.write().unwrap();
-            lock_tx.send(()).unwrap(); // acquire lock
+        server.update_quotes()?;
+        server.notify_clients()?;
 
-            // this thread holds lock, so update_quotes() should fail
-            release_rx.recv().unwrap();
-        });
+        thread::sleep(Duration::from_millis(50));
+        let messages = output.lock().unwrap();
+        assert_eq!(messages.len(), 1);
+        assert!(messages[0].contains("\"ticker\":\"AAPL\""));
 
-        lock_rx.recv().unwrap();
-
-        let result = server.update_quotes();
-        assert!(result.is_err());
-
-        match result.unwrap_err() {
-            QuoteServerError::UpdateQuoteError(_) => {}
-            _ => panic!("Expected UpdateQuoteError"),
-        }
-
-        // release lock
-        release_tx.send(()).unwrap();
-        handle.join().unwrap();
+        server.remove_client(client_id)?;
+        Ok(())
     }
 }

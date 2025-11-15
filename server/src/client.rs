@@ -3,6 +3,7 @@ use crate::stock_quote::StockQuote;
 
 use serde_json::json;
 use std::collections::HashMap;
+use std::fmt;
 use std::sync::{
     Arc, RwLock,
     mpsc::{Sender, channel},
@@ -140,6 +141,18 @@ impl Drop for Client {
         if let Some(handle) = self.thread_handle.take() {
             let _ = handle.join();
         }
+    }
+}
+
+impl fmt::Debug for Client {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("Client")
+            .field("tickers", &self.tickers)
+            .field("quotes", &self.quotes)
+            .field("tx", &self.tx)
+            .field("thread_handle", &self.thread_handle)
+            // exclude callback
+            .finish()
     }
 }
 
