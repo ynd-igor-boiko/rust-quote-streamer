@@ -18,19 +18,55 @@ struct Opt {
     /// Path to the configuration file with ticker symbols
     #[structopt(short, long)]
     config: String,
+
+    /// Log level: error, warn, info, debug, trace
+    #[structopt(short, long, default_value = "info")]
+    log_level: String,
+}
+
+fn init_logger(level: &str) -> Result<(), QuoteServerError> {
+    // Используем env_logger вместо fern
+    let mut builder = env_logger::Builder::new();
+
+    // Устанавливаем уровень логирования
+    let log_level = match level.to_lowercase().as_str() {
+        "error" => log::LevelFilter::Error,
+        "warn" => log::LevelFilter::Warn,
+        "info" => log::LevelFilter::Info,
+        "debug" => log::LevelFilter::Debug,
+        "trace" => log::LevelFilter::Trace,
+        _ => log::LevelFilter::Info,
+    };
+
+    builder.filter_level(log_level);
+    builder.format_timestamp_micros();
+    builder.format_module_path(false);
+    builder.format_target(false);
+    builder.init();
+
+    Ok(())
 }
 
 fn main() -> Result<(), QuoteServerError> {
     // Parse CLI arguments
     let opt = Opt::from_args();
 
+    // Initialize logger
+    init_logger(&opt.log_level)?;
+
+    log::info!("Starting Quote Server");
+    log::debug!("Command line options: {:?}", opt);
+
     // Initialize QuoteServer from config file
+    log::info!("Loading configuration from: {}", opt.config);
     let quote_server = QuoteServer::from_config(&opt.config)?;
     let quote_server = Arc::new(quote_server);
+
+    log::info!("Starting QuoteServer background processing");
     quote_server.start()?;
 
-    println!(
-        "QuoteServer initialized. Starting TCP server on {}",
+    log::info!(
+        "QuoteServer initialized successfully. Starting TCP server on {}",
         opt.tcp_addr
     );
 
@@ -38,12 +74,14 @@ fn main() -> Result<(), QuoteServerError> {
     let tcp_server = TcpServer::new(&opt.tcp_addr, quote_server.clone())
         .map_err(|e| QuoteServerError::InitializationError(format!("{:?}", e)))?;
 
-    println!("TCP server running. Waiting for client connections...");
+    log::info!("TCP server initialized. Waiting for client connections...");
 
     // Run server (blocking call)
+    log::info!("Entering main server loop");
     tcp_server
         .start()
         .map_err(|e| QuoteServerError::InitializationError(format!("{:?}", e)))?;
 
+    log::info!("Server shutdown complete");
     Ok(())
 }

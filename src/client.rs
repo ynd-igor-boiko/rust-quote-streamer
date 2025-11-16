@@ -53,6 +53,7 @@ impl Client {
         quotes: Arc<RwLock<HashMap<String, StockQuote>>>,
         callback: impl Fn(String) -> Result<(), ClientError> + Send + Sync + 'static,
     ) -> Self {
+        log::debug!("Creating new client for tickers: {:?}", tickers);
         Self {
             tickers,
             quotes,
@@ -71,6 +72,7 @@ impl Client {
     ///
     /// Returns the thread JoinHandle.
     pub fn start(&mut self) -> Result<(), ClientError> {
+        log::info!("Starting client thread for tickers: {:?}", self.tickers);
         let (tx, rx) = channel();
         self.tx = Some(tx.clone());
 
@@ -79,11 +81,14 @@ impl Client {
         let callback = self.callback.clone();
 
         let handle = thread::spawn(move || {
+            log::debug!("Client thread started for tickers: {:?}", tickers);
             // Loop forever until Shutdown or channel error
             loop {
                 match rx.recv() {
                     Ok(ClientCommand::Update) => {
+                        log::trace!("Received Update command for tickers: {:?}", tickers);
                         if let Ok(all_quotes) = quotes.read() {
+                            let mut processed_count = 0;
                             for ticker in &tickers {
                                 if let Some(q) = all_quotes.get(ticker) {
                                     let msg = json!({
@@ -92,16 +97,34 @@ impl Client {
                                         "volume": q.volume,
                                         "timestamp": q.timestamp,
                                     });
-                                    let _ = (callback)(msg.to_string());
+                                    if let Err(e) = (callback)(msg.to_string()) {
+                                        log::warn!("Callback error for ticker {}: {}", ticker, e);
+                                    } else {
+                                        processed_count += 1;
+                                    }
+                                } else {
+                                    log::debug!("Ticker {} not found in quotes", ticker);
                                 }
                             }
+                            log::trace!("Processed {} ticker updates", processed_count);
+                        } else {
+                            log::warn!("Failed to acquire read lock on quotes");
                         }
                     }
-                    Ok(ClientCommand::Shutdown) | Err(_) => break,
+                    Ok(ClientCommand::Shutdown) => {
+                        log::info!("Received Shutdown command, stopping client thread");
+                        break;
+                    }
+                    Err(e) => {
+                        log::warn!("Channel error in client thread: {}, stopping", e);
+                        break;
+                    }
                 }
             }
+            log::debug!("Client thread finished for tickers: {:?}", tickers);
         });
         self.thread_handle = Some(handle);
+        log::info!("Client thread started successfully");
         Ok(())
     }
 
@@ -109,6 +132,7 @@ impl Client {
     /// If the command is `Shutdown`, this method will also wait for the
     /// background thread to finish and clean up internal resources.
     pub fn send(&mut self, cmd: ClientCommand) -> Result<(), ClientError> {
+        log::debug!("Sending command to client: {:?}", cmd);
         match &self.tx {
             Some(tx) => {
                 tx.send(cmd.clone()).map_err(|e| {
@@ -116,30 +140,42 @@ impl Client {
                 })?;
 
                 if matches!(cmd, ClientCommand::Shutdown) {
+                    log::debug!("Shutdown command sent, waiting for thread to finish");
                     // Wait for thread to finish and clean up
                     if let Some(handle) = self.thread_handle.take() {
                         let _ = handle.join();
+                        log::info!("Client thread joined successfully");
                     }
                     self.tx = None; // Prevent further sends
+                    log::debug!("Client resources cleaned up");
                 }
 
                 Ok(())
             }
-            None => Err(ClientError::InitializationError(
-                "Client loop not started or already shutdown".into(),
-            )),
+            None => {
+                log::warn!(
+                    "Attempted to send command but client is not started or already shutdown"
+                );
+                Err(ClientError::InitializationError(
+                    "Client loop not started or already shutdown".into(),
+                ))
+            }
         }
     }
 }
 
 impl Drop for Client {
     fn drop(&mut self) {
+        log::debug!("Client drop called for tickers: {:?}", self.tickers);
         if let Some(tx) = &self.tx {
+            log::debug!("Sending shutdown signal from drop");
             let _ = tx.send(ClientCommand::Shutdown);
         }
 
         if let Some(handle) = self.thread_handle.take() {
+            log::debug!("Joining client thread from drop");
             let _ = handle.join();
+            log::debug!("Client thread joined from drop");
         }
     }
 }

@@ -20,24 +20,54 @@ struct Opt {
     /// Keep-alive interval in seconds
     #[structopt(short, long, default_value = "2")]
     keep_alive_sec: u64,
+
+    /// Log level: error, warn, info, debug, trace
+    #[structopt(short, long, default_value = "info")]
+    log_level: String,
+}
+
+fn init_logger(level: &str) -> Result<(), io::Error> {
+    let mut builder = env_logger::Builder::new();
+
+    let log_level = match level.to_lowercase().as_str() {
+        "error" => log::LevelFilter::Error,
+        "warn" => log::LevelFilter::Warn,
+        "info" => log::LevelFilter::Info,
+        "debug" => log::LevelFilter::Debug,
+        "trace" => log::LevelFilter::Trace,
+        _ => log::LevelFilter::Info,
+    };
+
+    builder.filter_level(log_level);
+    builder.format_timestamp_micros();
+    builder.format_module_path(false);
+    builder.format_target(false);
+    builder.init();
+
+    Ok(())
 }
 
 /// Connects to the TCP quote server
 fn connect(addr: &str) -> io::Result<(TcpStream, BufReader<TcpStream>)> {
+    log::info!("Connecting to TCP server at {}", addr);
     let stream = TcpStream::connect(addr)?;
     stream.set_read_timeout(Some(Duration::from_secs(5)))?;
     let reader = BufReader::new(stream.try_clone()?);
-    println!("Connected to TCP server at {}", addr);
+    log::info!("Connected to TCP server at {}", addr);
     Ok((stream, reader))
 }
 
 /// Reconnect to the server if connection is lost
 fn reconnect(addr: &str) -> (TcpStream, BufReader<TcpStream>) {
+    log::warn!("Attempting to reconnect to server at {}", addr);
     loop {
         match connect(addr) {
-            Ok(pair) => return pair,
+            Ok(pair) => {
+                log::info!("Reconnected successfully to {}", addr);
+                return pair;
+            }
             Err(e) => {
-                eprintln!("Reconnect failed: {}. Retrying in 2s...", e);
+                log::error!("Reconnect failed: {}. Retrying in 2s...", e);
                 thread::sleep(Duration::from_secs(2));
             }
         }
@@ -50,6 +80,7 @@ fn send_command(
     reader: &mut BufReader<TcpStream>,
     command: &str,
 ) -> io::Result<String> {
+    log::debug!("Sending command to server: '{}'", command);
     stream.write_all(command.as_bytes())?;
     stream.write_all(b"\n")?;
     stream.flush()?;
@@ -57,39 +88,51 @@ fn send_command(
     let mut buf = String::new();
     let n = reader.read_line(&mut buf)?;
     if n == 0 {
+        log::error!("Server closed connection during command '{}'", command);
         return Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,
             "Server closed connection",
         ));
     }
+    log::debug!("Received response from server: '{}'", buf.trim());
     Ok(buf)
 }
 
 /// Send a PING command and expect PONG reply
 fn send_ping(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) -> io::Result<()> {
+    log::trace!("Sending PING to server");
     stream.write_all(b"PING\n")?;
     stream.flush()?;
 
     let mut buf = String::new();
     let n = reader.read_line(&mut buf)?;
     if n == 0 {
+        log::error!("Server closed connection during PING");
         return Err(io::Error::new(
             io::ErrorKind::UnexpectedEof,
             "Server closed connection",
         ));
     }
     if buf.trim() != "PONG" {
+        log::warn!("Expected PONG, got: '{}'", buf.trim());
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             format!("Expected PONG, got: {}", buf),
         ));
     }
+    log::trace!("Received PONG from server");
     Ok(())
 }
 
 /// TCP quote client main loop
 fn main() -> io::Result<()> {
     let opt = Opt::from_args();
+
+    // Initialize logger
+    init_logger(&opt.log_level)?;
+
+    log::info!("Starting Quote Client");
+    log::debug!("Command line options: {:?}", opt);
 
     let (stream, reader) = connect(&opt.server_addr)?;
     let stream = Arc::new(Mutex::new(stream));
@@ -102,6 +145,11 @@ fn main() -> io::Result<()> {
         let server_addr = opt.server_addr.clone();
         let keep_alive = Duration::from_secs(opt.keep_alive_sec);
 
+        log::info!(
+            "Starting keep-alive thread with interval: {}s",
+            opt.keep_alive_sec
+        );
+
         thread::spawn(move || {
             loop {
                 thread::sleep(keep_alive);
@@ -109,7 +157,7 @@ fn main() -> io::Result<()> {
                 let mut r = reader_clone.lock().unwrap();
 
                 if let Err(e) = send_ping(&mut *s, &mut *r) {
-                    eprintln!("Keep-alive failed: {}. Reconnecting...", e);
+                    log::warn!("Keep-alive failed: {}. Reconnecting...", e);
                     let (new_s, new_r) = reconnect(&server_addr);
                     *s = new_s;
                     *r = new_r;
@@ -121,17 +169,28 @@ fn main() -> io::Result<()> {
     // Create UDP socket for receiving streamed quotes
     let udp_socket = UdpSocket::bind(("0.0.0.0", opt.udp_port))?;
     udp_socket.set_read_timeout(Some(Duration::from_millis(500)))?;
-    println!("UDP listening on port {}", opt.udp_port);
+    log::info!("UDP socket bound to port {}", opt.udp_port);
 
     // Spawn thread to handle incoming UDP messages
     {
         let udp_clone = udp_socket.try_clone()?;
+        log::info!("Starting UDP listener thread");
+
         thread::spawn(move || {
+            log::debug!("UDP listener thread started");
+            let mut message_count = 0;
             loop {
                 let mut buf = [0u8; 1024];
                 if let Ok((n, src)) = udp_clone.recv_from(&mut buf) {
                     let msg = String::from_utf8_lossy(&buf[..n]);
-                    println!("[{}] {}", src, msg);
+                    message_count += 1;
+                    log::debug!(
+                        "Received UDP message #{} from {}: {}",
+                        message_count,
+                        src,
+                        msg.trim()
+                    );
+                    println!("[{}] {}", src, msg.trim());
                 }
             }
         });
@@ -139,6 +198,8 @@ fn main() -> io::Result<()> {
 
     // Interactive CLI loop
     let stdin = io::stdin();
+    log::info!("Entering interactive command loop");
+
     loop {
         print!("quote-client> ");
         io::stdout().flush()?;
@@ -151,6 +212,7 @@ fn main() -> io::Result<()> {
             continue;
         }
         if command.eq_ignore_ascii_case("EXIT") {
+            log::info!("Received EXIT command, shutting down client");
             println!("Exiting client.");
             break;
         }
@@ -159,9 +221,12 @@ fn main() -> io::Result<()> {
         let mut r = reader.lock().unwrap();
 
         match send_command(&mut *s, &mut *r, command) {
-            Ok(resp) => print!("{}", resp),
+            Ok(resp) => {
+                log::debug!("Command '{}' executed successfully", command);
+                print!("{}", resp);
+            }
             Err(e) => {
-                eprintln!("Command failed: {}. Reconnecting...", e);
+                log::error!("Command '{}' failed: {}. Reconnecting...", command, e);
                 let (new_s, new_r) = reconnect(&opt.server_addr);
                 *s = new_s;
                 *r = new_r;
@@ -169,6 +234,7 @@ fn main() -> io::Result<()> {
         }
     }
 
+    log::info!("Quote Client shutdown complete");
     Ok(())
 }
 
