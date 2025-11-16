@@ -26,6 +26,8 @@ pub enum QuoteServerError {
     InitializationError(String),
     #[error("Failed to update quotes: {0}")]
     UpdateQuoteError(String),
+    #[error("Failed to add/remove client: {0}")]
+    ClientError(String),
 }
 
 /// Possible client-side errors (primarily callback failures)
@@ -35,4 +37,24 @@ pub enum ClientError {
     CallbackFailed(String),
     #[error("Failed to initialize client loop: {0}")]
     InitializationError(String),
+}
+
+impl From<ClientError> for QuoteServerError {
+    fn from(err: ClientError) -> Self {
+        QuoteServerError::ClientError(err.to_string())
+    }
+}
+
+#[derive(Error, Debug)]
+pub enum TcpServerError {
+    #[error("Failed to bind TCP listener: {0}")]
+    BindError(String),
+    #[error("Failed to accept TCP connection: {0}")]
+    AcceptError(String),
+    #[error("Client IO error: {0}")]
+    ClientIoError(String),
+    #[error("Invalid command received: {0}")]
+    InvalidCommand(String),
+    #[error("Quote server error: {0}")]
+    QuoteServerError(#[from] QuoteServerError),
 }

@@ -7,3 +7,4 @@ pub mod errors;
 pub mod quote_generator;
 pub mod quote_server;
 pub mod stock_quote;
+pub mod tcp_server;

@@ -65,14 +65,14 @@ impl QuoteServer {
 
     /// Add a new client
     pub fn add_client(
-        &mut self,
+        &self,
         tickers: Vec<String>,
         callback: impl Fn(String) -> Result<(), ClientError> + Send + Sync + 'static,
-    ) -> Result<u64, ClientError> {
+    ) -> Result<u64, QuoteServerError> {
         let mut clients_lock = self
             .clients
             .lock()
-            .map_err(|_| ClientError::InitializationError("Failed to lock clients".into()))?;
+            .map_err(|_| QuoteServerError::ClientError("Failed to lock clients".into()))?;
         let mut client = Client::new(tickers, self.quotes.clone(), callback);
         client.start()?;
 
@@ -82,11 +82,11 @@ impl QuoteServer {
     }
 
     /// Remove a client by id
-    pub fn remove_client(&mut self, id: u64) -> Result<(), ClientError> {
+    pub fn remove_client(&self, id: u64) -> Result<(), QuoteServerError> {
         let mut clients_lock = self
             .clients
             .lock()
-            .map_err(|_| ClientError::InitializationError("Failed to lock clients".into()))?;
+            .map_err(|_| QuoteServerError::ClientError("Failed to lock clients".into()))?;
         if let Some(mut client) = clients_lock.remove(&id) {
             client.send(ClientCommand::Shutdown)?;
         }
