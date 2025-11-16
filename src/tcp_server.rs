@@ -2,7 +2,7 @@ use crate::defs::{CLIENT_KEEP_ALIVE_SEC, TCP_CONNECTION_TICK_PERIOD_MSEC};
 use crate::errors::TcpServerError;
 use crate::quote_server::QuoteServer;
 
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::Arc;
 use std::thread;
@@ -77,18 +77,25 @@ fn handle_connection(
     let mut client_id: Option<u64> = None;
     let mut last_ping = Instant::now();
 
-    loop {
-        let mut buf = [0u8; 1024];
-        // Set read timeout to periodically check keep-alive
+    // Wrap the stream in BufReader for line-based reading
+    let mut reader = BufReader::new(
         stream
-            .set_read_timeout(Some(Duration::from_millis(TCP_CONNECTION_TICK_PERIOD_MSEC)))
-            .ok();
+            .try_clone()
+            .map_err(|e| TcpServerError::ClientIoError(e.to_string()))?,
+    );
 
-        match stream.read(&mut buf) {
+    loop {
+        let mut line = String::new();
+
+        match reader.read_line(&mut line) {
             Ok(0) => return Ok(()), // client closed connection
-            Ok(n) => {
+            Ok(_) => {
                 last_ping = Instant::now();
-                let msg = String::from_utf8_lossy(&buf[..n]).trim().to_string();
+                let msg = line.trim().to_string(); // trim removes trailing \n
+
+                if msg.is_empty() {
+                    continue; // ignore empty lines
+                }
 
                 if msg.starts_with("PING") {
                     handle_ping(&mut stream)?;
@@ -97,10 +104,13 @@ fn handle_connection(
                 } else if msg.starts_with("STOP") {
                     handle_stop(&mut stream, &quote_server, &mut client_id)?;
                 } else {
-                    handle_invalid(&mut stream)?;
+                    handle_invalid(&mut stream, msg)?;
                 }
             }
-            Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+            Err(ref e)
+                if e.kind() == std::io::ErrorKind::WouldBlock
+                    || e.kind() == std::io::ErrorKind::TimedOut =>
+            {
                 // Keep-alive check
                 if last_ping.elapsed().as_secs() > CLIENT_KEEP_ALIVE_SEC {
                     if let Some(id) = client_id.take() {
@@ -108,9 +118,13 @@ fn handle_connection(
                     }
                     return Ok(());
                 }
+                thread::sleep(Duration::from_millis(TCP_CONNECTION_TICK_PERIOD_MSEC));
                 continue;
             }
-            Err(e) => return Err(TcpServerError::ClientIoError(e.to_string())),
+            Err(e) => {
+                eprintln!("Connection failed: {}", e.to_string());
+                return Err(TcpServerError::ClientIoError(e.to_string()));
+            }
         }
     }
 }
@@ -188,7 +202,8 @@ fn handle_stop(
 }
 
 /// Sends an error message to the client for invalid commands.
-fn handle_invalid(stream: &mut TcpStream) -> Result<(), TcpServerError> {
+fn handle_invalid(stream: &mut TcpStream, msg: String) -> Result<(), TcpServerError> {
+    eprintln!("Incorrect message format: {}", msg);
     stream
         .write_all(b"ERR Invalid command\n")
         .map_err(|e| TcpServerError::ClientIoError(e.to_string()))
