@@ -1,3 +1,17 @@
+//! # Quote Client
+//!
+//! TCP client for connecting to a stock quote streaming server.
+//! Supports interactive CLI commands, UDP streaming, and keep-alive monitoring.
+//!
+//! ## Features
+//!
+//! - Connects to TCP server and subscribes to stock tickers.
+//! - Receives streaming updates via UDP.
+//! - Automatic reconnection on TCP failure.
+//! - Keep-alive PING/PONG mechanism to maintain connection.
+//! - Interactive CLI with commands: `STREAM`, `STOP`, `EXIT`.
+//! - Logging via `log` and configurable log level.
+
 use quote_server::errors::CliError;
 
 use std::io::{self, BufRead, BufReader, Write};
@@ -28,6 +42,7 @@ struct Opt {
     log_level: String,
 }
 
+/// Initialize the logger with a given log level
 fn init_logger(level: &str) -> Result<(), io::Error> {
     let mut builder = env_logger::Builder::new();
 
@@ -163,7 +178,7 @@ fn main() -> Result<(), CliError> {
                             "Failed to lock stream mutex: {}, exiting keep-alive thread",
                             e
                         );
-                        break; // Выходим из цикла и завершаем поток
+                        break;
                     }
                 };
 
@@ -174,7 +189,7 @@ fn main() -> Result<(), CliError> {
                             "Failed to lock reader mutex: {}, exiting keep-alive thread",
                             e
                         );
-                        break; // Выходим из цикла и завершаем поток
+                        break;
                     }
                 };
 

@@ -1,3 +1,21 @@
+//! # Quote Server
+//!
+//! This is a TCP-based real-time stock quote server.
+//! It periodically updates stock quotes and streams them to connected clients over UDP.
+//!
+//! ## Features
+//! - Loads stock ticker configuration from a file.
+//! - Periodically updates quotes in the background.
+//! - TCP interface for client commands: `PING`, `STREAM`, `STOP`.
+//! - Sends stock updates to clients via UDP.
+//! - Multi-threaded and safe with `Arc` and `Mutex` where necessary.
+//! - Logging support with configurable log levels.
+//!
+//! ## Command-line Options
+//! - `--tcp-addr` / `-t`: TCP listen address (default `127.0.0.1:33333`).
+//! - `--config` / `-c`: Path to the configuration file with ticker symbols.
+//! - `--log-level` / `-l`: Log level (`error`, `warn`, `info`, `debug`, `trace`).
+
 use quote_server::errors::{CliError, QuoteServerError};
 use quote_server::quote_server::QuoteServer;
 use quote_server::tcp_server::TcpServer;
@@ -24,11 +42,10 @@ struct Opt {
     log_level: String,
 }
 
+/// Initializes the logger using env_logger with the given level
 fn init_logger(level: &str) -> Result<(), CliError> {
-    // Используем env_logger вместо fern
     let mut builder = env_logger::Builder::new();
 
-    // Устанавливаем уровень логирования
     let log_level = match level.to_lowercase().as_str() {
         "error" => log::LevelFilter::Error,
         "warn" => log::LevelFilter::Warn,
@@ -63,7 +80,7 @@ fn main() -> Result<(), CliError> {
     let quote_server = Arc::new(quote_server);
 
     log::info!("Starting QuoteServer background processing");
-    quote_server.start()?;
+    quote_server.start()?; // starts periodic quote updates
 
     log::info!(
         "QuoteServer initialized successfully. Starting TCP server on {}",
