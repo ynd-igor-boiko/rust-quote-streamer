@@ -58,3 +58,15 @@ pub enum TcpServerError {
     #[error("Quote server error: {0}")]
     QuoteServerError(#[from] QuoteServerError),
 }
+
+#[derive(Error, Debug)]
+pub enum CliError {
+    #[error("Cli failed with error: {0}")]
+    GeneralError(String),
+}
+
+impl From<QuoteServerError> for CliError {
+    fn from(err: QuoteServerError) -> Self {
+        CliError::GeneralError(err.to_string())
+    }
+}

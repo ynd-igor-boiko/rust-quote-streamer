@@ -75,7 +75,10 @@ impl QuoteServer {
 
     /// Run the server loop that updates quotes periodically
     pub fn start(self: &Arc<Self>) -> Result<(), QuoteServerError> {
-        let mut guard = self.bg_thread.lock().unwrap();
+        let mut guard = self
+            .bg_thread
+            .lock()
+            .map_err(|e| QuoteServerError::InitializationError(e.to_string()))?;
 
         if guard.is_some() {
             log::warn!("QuoteServer background thread already running");
@@ -114,7 +117,16 @@ impl QuoteServer {
         log::info!("Initiating QuoteServer shutdown");
         self.shutdown_flag.store(true, Ordering::SeqCst);
 
-        if let Some(handle) = self.bg_thread.lock().unwrap().take() {
+        if let Some(handle) = self
+            .bg_thread
+            .lock()
+            .map_err(|_| {
+                log::error!("Failed to lock background thread mutex during shutdown");
+                None::<thread::JoinHandle<()>>
+            })
+            .ok()
+            .and_then(|mut guard| guard.take())
+        {
             log::debug!("Waiting for QuoteServer background thread to finish");
             handle.join().ok();
             log::info!("QuoteServer background thread joined successfully");

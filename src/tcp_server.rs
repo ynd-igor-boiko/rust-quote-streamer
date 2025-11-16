@@ -89,7 +89,7 @@ fn handle_connection(
     let mut last_ping = Instant::now();
 
     let tick_timeout = Duration::from_millis(TCP_CONNECTION_TICK_PERIOD_MSEC);
-    /// Clone the stream for buffered, line-based reading
+    // Clone the stream for buffered, line-based reading
     let cloned = stream
         .try_clone()
         .map_err(|e| TcpServerError::ClientIoError(e.to_string()))?;

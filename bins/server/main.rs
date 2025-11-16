@@ -1,4 +1,4 @@
-use quote_server::errors::QuoteServerError;
+use quote_server::errors::{CliError, QuoteServerError};
 use quote_server::quote_server::QuoteServer;
 use quote_server::tcp_server::TcpServer;
 use std::sync::Arc;
@@ -24,7 +24,7 @@ struct Opt {
     log_level: String,
 }
 
-fn init_logger(level: &str) -> Result<(), QuoteServerError> {
+fn init_logger(level: &str) -> Result<(), CliError> {
     // Используем env_logger вместо fern
     let mut builder = env_logger::Builder::new();
 
@@ -47,7 +47,7 @@ fn init_logger(level: &str) -> Result<(), QuoteServerError> {
     Ok(())
 }
 
-fn main() -> Result<(), QuoteServerError> {
+fn main() -> Result<(), CliError> {
     // Parse CLI arguments
     let opt = Opt::from_args();
 
@@ -72,7 +72,7 @@ fn main() -> Result<(), QuoteServerError> {
 
     // Start TCP server
     let tcp_server = TcpServer::new(&opt.tcp_addr, quote_server.clone())
-        .map_err(|e| QuoteServerError::InitializationError(format!("{:?}", e)))?;
+        .map_err(|e| CliError::GeneralError(format!("{:?}", e)))?;
 
     log::info!("TCP server initialized. Waiting for client connections...");
 
@@ -80,7 +80,7 @@ fn main() -> Result<(), QuoteServerError> {
     log::info!("Entering main server loop");
     tcp_server
         .start()
-        .map_err(|e| QuoteServerError::InitializationError(format!("{:?}", e)))?;
+        .map_err(|e| CliError::GeneralError(format!("{:?}", e)))?;
 
     log::info!("Server shutdown complete");
     Ok(())

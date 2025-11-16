@@ -1,3 +1,5 @@
+use quote_server::errors::CliError;
+
 use std::io::{self, BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpStream, UdpSocket};
 use std::sync::{Arc, Mutex};
@@ -125,16 +127,17 @@ fn send_ping(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) -> io::R
 }
 
 /// TCP quote client main loop
-fn main() -> io::Result<()> {
+fn main() -> Result<(), CliError> {
     let opt = Opt::from_args();
 
     // Initialize logger
-    init_logger(&opt.log_level)?;
+    init_logger(&opt.log_level).map_err(|e| CliError::GeneralError(e.to_string()))?;
 
     log::info!("Starting Quote Client");
     log::debug!("Command line options: {:?}", opt);
 
-    let (stream, reader) = connect(&opt.server_addr)?;
+    let (stream, reader) =
+        connect(&opt.server_addr).map_err(|e| CliError::GeneralError(e.to_string()))?;
     let stream = Arc::new(Mutex::new(stream));
     let reader = Arc::new(Mutex::new(reader));
 
@@ -153,8 +156,27 @@ fn main() -> io::Result<()> {
         thread::spawn(move || {
             loop {
                 thread::sleep(keep_alive);
-                let mut s = stream_clone.lock().unwrap();
-                let mut r = reader_clone.lock().unwrap();
+                let mut s = match stream_clone.lock() {
+                    Ok(guard) => guard,
+                    Err(e) => {
+                        log::error!(
+                            "Failed to lock stream mutex: {}, exiting keep-alive thread",
+                            e
+                        );
+                        break; // Выходим из цикла и завершаем поток
+                    }
+                };
+
+                let mut r = match reader_clone.lock() {
+                    Ok(guard) => guard,
+                    Err(e) => {
+                        log::error!(
+                            "Failed to lock reader mutex: {}, exiting keep-alive thread",
+                            e
+                        );
+                        break; // Выходим из цикла и завершаем поток
+                    }
+                };
 
                 if let Err(e) = send_ping(&mut *s, &mut *r) {
                     log::warn!("Keep-alive failed: {}. Reconnecting...", e);
@@ -167,13 +189,18 @@ fn main() -> io::Result<()> {
     }
 
     // Create UDP socket for receiving streamed quotes
-    let udp_socket = UdpSocket::bind(("0.0.0.0", opt.udp_port))?;
-    udp_socket.set_read_timeout(Some(Duration::from_millis(500)))?;
+    let udp_socket = UdpSocket::bind(("0.0.0.0", opt.udp_port))
+        .map_err(|e| CliError::GeneralError(e.to_string()))?;
+    udp_socket
+        .set_read_timeout(Some(Duration::from_millis(500)))
+        .map_err(|e| CliError::GeneralError(e.to_string()))?;
     log::info!("UDP socket bound to port {}", opt.udp_port);
 
     // Spawn thread to handle incoming UDP messages
     {
-        let udp_clone = udp_socket.try_clone()?;
+        let udp_clone = udp_socket
+            .try_clone()
+            .map_err(|e| CliError::GeneralError(e.to_string()))?;
         log::info!("Starting UDP listener thread");
 
         thread::spawn(move || {
@@ -202,10 +229,14 @@ fn main() -> io::Result<()> {
 
     loop {
         print!("quote-client> ");
-        io::stdout().flush()?;
+        io::stdout()
+            .flush()
+            .map_err(|e| CliError::GeneralError(e.to_string()))?;
 
         let mut input = String::new();
-        stdin.read_line(&mut input)?;
+        stdin
+            .read_line(&mut input)
+            .map_err(|e| CliError::GeneralError(e.to_string()))?;
         let command = input.trim();
 
         if command.is_empty() {
@@ -217,8 +248,12 @@ fn main() -> io::Result<()> {
             break;
         }
 
-        let mut s = stream.lock().unwrap();
-        let mut r = reader.lock().unwrap();
+        let mut s = stream
+            .lock()
+            .map_err(|e| CliError::GeneralError(e.to_string()))?;
+        let mut r = reader
+            .lock()
+            .map_err(|e| CliError::GeneralError(e.to_string()))?;
 
         match send_command(&mut *s, &mut *r, command) {
             Ok(resp) => {
