@@ -9,9 +9,9 @@ use crate::stock_quote::StockQuote;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 /// QuoteServer holds quotes, a generator, and multiple clients.
@@ -21,6 +21,11 @@ pub struct QuoteServer {
     generator: QuoteGenerator,
     clients: Mutex<HashMap<u64, Client>>,
     clients_count: AtomicU64,
+
+    /// Background thread
+    bg_thread: Mutex<Option<JoinHandle<()>>>,
+    /// Graceful shutdown flag
+    shutdown_flag: Arc<AtomicBool>,
 }
 
 impl QuoteServer {
@@ -50,16 +55,45 @@ impl QuoteServer {
             generator,
             clients: Mutex::new(HashMap::new()),
             clients_count: AtomicU64::new(0),
+            bg_thread: Mutex::new(None),
+            shutdown_flag: Arc::new(AtomicBool::new(false)),
         })
     }
 
     /// Run the server loop that updates quotes periodically
-    pub fn run_server(&mut self) -> Result<(), QuoteServerError> {
-        loop {
-            thread::sleep(Duration::from_millis(SERVER_TICK_PERIOD_MSEC));
+    pub fn start(self: &Arc<Self>) -> Result<(), QuoteServerError> {
+        let mut guard = self.bg_thread.lock().unwrap();
 
-            self.update_quotes()?;
-            self.notify_clients()?;
+        if guard.is_some() {
+            return Ok(()); // already running
+        }
+
+        let server = Arc::clone(self);
+
+        let handle = std::thread::spawn(move || {
+            while !server.shutdown_flag.load(Ordering::SeqCst) {
+                std::thread::sleep(std::time::Duration::from_millis(SERVER_TICK_PERIOD_MSEC));
+
+                if let Err(e) = server.update_quotes() {
+                    eprintln!("Update error: {}", e);
+                }
+                if let Err(e) = server.notify_clients() {
+                    eprintln!("Notify error: {}", e);
+                }
+            }
+        });
+
+        *guard = Some(handle);
+
+        Ok(())
+    }
+
+    /// Signal the server to shut down and join the thread
+    pub fn shutdown(&self) {
+        self.shutdown_flag.store(true, Ordering::SeqCst);
+
+        if let Some(handle) = self.bg_thread.lock().unwrap().take() {
+            handle.join().ok();
         }
     }
 
@@ -94,7 +128,7 @@ impl QuoteServer {
     }
 
     /// Update all quotes
-    fn update_quotes(&mut self) -> Result<(), QuoteServerError> {
+    fn update_quotes(&self) -> Result<(), QuoteServerError> {
         let start = Instant::now();
         let timeout = Duration::from_millis(WRITE_TIMEOUT_MS);
 
@@ -116,7 +150,7 @@ impl QuoteServer {
         )))
     }
 
-    fn notify_clients(&mut self) -> Result<(), QuoteServerError> {
+    fn notify_clients(&self) -> Result<(), QuoteServerError> {
         // Notify all clients
         let mut clients = self
             .clients
@@ -128,6 +162,12 @@ impl QuoteServer {
                 .map_err(|e| QuoteServerError::UpdateQuoteError(e.to_string()))?;
         }
         Ok(())
+    }
+}
+
+impl Drop for QuoteServer {
+    fn drop(&mut self) {
+        let _ = self.shutdown(); // graceful shutdown
     }
 }
 

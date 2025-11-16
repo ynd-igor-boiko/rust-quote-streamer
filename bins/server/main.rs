@@ -27,6 +27,7 @@ fn main() -> Result<(), QuoteServerError> {
     // Initialize QuoteServer from config file
     let quote_server = QuoteServer::from_config(&opt.config)?;
     let quote_server = Arc::new(quote_server);
+    quote_server.start()?;
 
     println!(
         "QuoteServer initialized. Starting TCP server on {}",

@@ -77,12 +77,20 @@ fn handle_connection(
     let mut client_id: Option<u64> = None;
     let mut last_ping = Instant::now();
 
-    // Wrap the stream in BufReader for line-based reading
-    let mut reader = BufReader::new(
-        stream
-            .try_clone()
-            .map_err(|e| TcpServerError::ClientIoError(e.to_string()))?,
-    );
+    let tick_timeout = Duration::from_millis(TCP_CONNECTION_TICK_PERIOD_MSEC);
+    /// Clone the stream for buffered, line-based reading
+    let cloned = stream
+        .try_clone()
+        .map_err(|e| TcpServerError::ClientIoError(e.to_string()))?;
+
+    // Also set the same read timeout on the cloned handle used by BufReader.
+    // Some platforms treat timeouts per-handle, so do it explicitly.
+    cloned
+        .set_read_timeout(Some(tick_timeout))
+        .map_err(|e| TcpServerError::ClientIoError(e.to_string()))?;
+
+    // Wrap the cloned stream in BufReader for line-based reading
+    let mut reader = BufReader::new(cloned);
 
     loop {
         let mut line = String::new();
@@ -123,6 +131,9 @@ fn handle_connection(
             }
             Err(e) => {
                 eprintln!("Connection failed: {}", e.to_string());
+                if let Some(id) = client_id.take() {
+                    quote_server.remove_client(id)?;
+                }
                 return Err(TcpServerError::ClientIoError(e.to_string()));
             }
         }
