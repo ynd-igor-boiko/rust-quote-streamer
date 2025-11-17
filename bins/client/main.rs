@@ -222,17 +222,40 @@ fn main() -> Result<(), CliError> {
             log::debug!("UDP listener thread started");
             let mut message_count = 0;
             loop {
-                let mut buf = [0u8; 1024];
-                if let Ok((n, src)) = udp_clone.recv_from(&mut buf) {
-                    let msg = String::from_utf8_lossy(&buf[..n]);
-                    message_count += 1;
-                    log::debug!(
-                        "Received UDP message #{} from {}: {}",
-                        message_count,
-                        src,
-                        msg.trim()
-                    );
-                    println!("[{}] {}", src, msg.trim());
+                let mut buf = [0u8; 2048];
+
+                match udp_clone.recv_from(&mut buf) {
+                    Ok((n, src)) => {
+                        message_count += 1;
+
+                        let raw = String::from_utf8_lossy(&buf[..n]).trim().to_string();
+
+                        let pretty = match serde_json::from_str::<serde_json::Value>(&raw) {
+                            Ok(json) => {
+                                serde_json::to_string_pretty(&json).unwrap_or_else(|_| raw.clone())
+                            }
+                            Err(_) => raw.clone(),
+                        };
+
+                        log::debug!("Received UDP message #{} from {}", message_count, src);
+
+                        println!("\n=== Quote Update #{} ===", message_count);
+                        println!("From: {}", src);
+                        println!("Message:\n{}\n", pretty);
+                    }
+
+                    Err(ref e)
+                        if e.kind() == std::io::ErrorKind::WouldBlock
+                            || e.kind() == std::io::ErrorKind::TimedOut =>
+                    {
+                        // No messages from server
+                        continue;
+                    }
+
+                    Err(e) => {
+                        log::error!("UDP receive error: {}", e);
+                        continue;
+                    }
                 }
             }
         });
