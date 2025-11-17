@@ -193,7 +193,7 @@ fn main() -> Result<(), CliError> {
                     }
                 };
 
-                if let Err(e) = send_ping(&mut *s, &mut *r) {
+                if let Err(e) = send_ping(&mut s, &mut r) {
                     log::warn!("Keep-alive failed: {}. Reconnecting...", e);
                     let (new_s, new_r) = reconnect(&server_addr);
                     *s = new_s;
@@ -293,7 +293,7 @@ fn main() -> Result<(), CliError> {
             .lock()
             .map_err(|e| CliError::GeneralError(e.to_string()))?;
 
-        match send_command(&mut *s, &mut *r, command) {
+        match send_command(&mut s, &mut r, command) {
             Ok(resp) => {
                 log::debug!("Command '{}' executed successfully", command);
                 print!("{}", resp);
