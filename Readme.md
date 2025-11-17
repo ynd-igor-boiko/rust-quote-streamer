@@ -58,7 +58,7 @@ cargo build --release
 ### Quote Server
 
 ```bash
-cargo run --bin quote_server -- --tcp-addr 127.0.0.1:33333 --config tickers.txt --log-level info
+cargo run --bin quote_streamer_server -- --tcp-addr 127.0.0.1:33333 --config tickers.txt --log-level info
 ```
 
 **Options:**
@@ -77,7 +77,7 @@ TSLA
 ### Quote Client
 
 ```bash
-cargo run --bin quote_client -- --server-addr 127.0.0.1:33333 --udp-port 50000 --keep-alive-sec 2 --log-level info
+cargo run --bin quote_streamer_client -- --server-addr 127.0.0.1:33333 --udp-port 50000 --keep-alive-sec 2 --log-level info
 ```
 
 **Options:**
