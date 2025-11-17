@@ -1,11 +1,11 @@
 use rand_distr::NormalError;
-use thiserror::Error;
+use thiserror::Error; // clever)
 
 /// Errors that may occur inside the [`QuoteGenerator`](crate::quote_generator::QuoteGenerator).
 ///
 /// These errors represent failures in randomness generation, invalid inputs,
 /// or system time retrieval issues that affect quote computation.
-#[derive(Debug)]
+#[derive(Debug)] // strangelly, why don't you derive thiserror::Error here
 pub enum QuoteGeneratorError {
     /// Supplied volatility parameter is outside the allowed numeric range.
     ///

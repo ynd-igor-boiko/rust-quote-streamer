@@ -30,6 +30,7 @@ pub struct Client {
     /// List of ticker symbols the client is subscribed to
     pub tickers: Vec<String>,
 
+    // Nice syncyng! Read sometimes about dashmap::DashMap crate, it's a totally concurrent alternative
     /// Shared stock quote map updated by QuoteServer
     quotes: Arc<RwLock<HashMap<String, StockQuote>>>,
 
