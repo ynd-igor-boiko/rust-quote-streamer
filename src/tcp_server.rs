@@ -2,7 +2,7 @@ use crate::defs::{CLIENT_KEEP_ALIVE_SEC, TCP_CONNECTION_TICK_PERIOD_MSEC};
 use crate::errors::TcpServerError;
 use crate::quote_server::QuoteServer;
 
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{SocketAddr, TcpListener, TcpStream, UdpSocket};
 use std::sync::Arc;
 use std::thread;

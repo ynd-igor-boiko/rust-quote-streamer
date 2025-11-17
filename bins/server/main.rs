@@ -16,7 +16,7 @@
 //! - `--config` / `-c`: Path to the configuration file with ticker symbols.
 //! - `--log-level` / `-l`: Log level (`error`, `warn`, `info`, `debug`, `trace`).
 
-use quote_server::errors::{CliError, QuoteServerError};
+use quote_server::errors::CliError;
 use quote_server::quote_server::QuoteServer;
 use quote_server::tcp_server::TcpServer;
 use std::sync::Arc;

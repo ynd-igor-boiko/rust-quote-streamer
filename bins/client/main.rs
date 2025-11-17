@@ -15,10 +15,10 @@
 use quote_server::errors::CliError;
 
 use std::io::{self, BufRead, BufReader, Write};
-use std::net::{SocketAddr, TcpStream, UdpSocket};
+use std::net::{TcpStream, UdpSocket};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use structopt::StructOpt;
 
 /// Command-line options for the client
