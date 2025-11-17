@@ -1,3 +1,4 @@
+use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Represents a single real-time stock quote.
@@ -50,25 +51,6 @@ impl StockQuote {
                 .unwrap_or_default()
                 .as_millis() as u64,
         }
-    }
-
-    /// Serializes the quote into a compact `ticker|price|volume|timestamp` text format.
-    ///
-    /// This string format is used by the UDP streaming subsystem.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// use quote_server::stock_quote::StockQuote;
-    /// let q = StockQuote::new("AAPL");
-    /// let s = q.to_string();
-    /// assert!(s.starts_with("AAPL|"));
-    /// ```
-    pub fn to_string(&self) -> String {
-        format!(
-            "{}|{}|{}|{}",
-            self.ticker, self.price, self.volume, self.timestamp
-        )
     }
 
     /// Parses a `StockQuote` from its serialized textual format.
@@ -127,5 +109,27 @@ impl StockQuote {
         bytes.push(b'|');
         bytes.extend_from_slice(self.timestamp.to_string().as_bytes());
         bytes
+    }
+}
+
+/// Serializes the quote into a compact `ticker|price|volume|timestamp` text format.
+///
+/// This string format is used by the UDP streaming subsystem.
+///
+/// # Example
+///
+/// ```
+/// use quote_server::stock_quote::StockQuote;
+/// let q = StockQuote::new("AAPL");
+/// let s = q.to_string();
+/// assert!(s.starts_with("AAPL|"));
+/// ```
+impl fmt::Display for StockQuote {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "{}|{}|{}|{}",
+            self.ticker, self.price, self.volume, self.timestamp
+        )
     }
 }

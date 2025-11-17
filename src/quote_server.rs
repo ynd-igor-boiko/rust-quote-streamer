@@ -240,7 +240,7 @@ impl QuoteServer {
 impl Drop for QuoteServer {
     fn drop(&mut self) {
         log::debug!("QuoteServer drop called, initiating shutdown");
-        let _ = self.shutdown(); // graceful shutdown
+        self.shutdown(); // graceful shutdown
     }
 }
 

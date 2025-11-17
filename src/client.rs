@@ -218,7 +218,7 @@ mod tests {
             Ok(())
         });
 
-        let _handle = client.start().unwrap();
+        client.start().unwrap();
 
         client.send(ClientCommand::Update).unwrap();
         thread::sleep(Duration::from_millis(50));
@@ -249,7 +249,7 @@ mod tests {
             Ok(())
         });
 
-        let _handle = client.start().unwrap();
+        client.start().unwrap();
         client.send(ClientCommand::Update).unwrap();
         thread::sleep(Duration::from_millis(50));
 
@@ -265,10 +265,8 @@ mod tests {
         let quotes = Arc::new(RwLock::new(HashMap::new()));
         let mut client = Client::new(vec![], quotes.clone(), |_json| Ok(()));
 
-        let _handle = client.start().unwrap();
+        client.start().unwrap();
         client.send(ClientCommand::Shutdown).unwrap();
         thread::sleep(Duration::from_millis(20));
-
-        assert!(true);
     }
 }

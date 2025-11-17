@@ -312,8 +312,6 @@ mod tests {
             let mut reader = BufReader::new(s.try_clone().unwrap());
             let result = send_ping(&mut s, &mut reader);
             assert!(result.is_err());
-        } else {
-            assert!(true);
         }
     }
 }

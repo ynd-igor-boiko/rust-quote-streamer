@@ -220,7 +220,7 @@ fn handle_stream(
 
     let id = quote_server
         .add_client(tickers, Box::new(callback))
-        .map_err(|e| TcpServerError::QuoteServerError(e))?;
+        .map_err(TcpServerError::QuoteServerError)?;
 
     *client_id = Some(id);
     log::info!("Registered client {} for TCP connection {}", id, addr);
@@ -243,7 +243,7 @@ fn handle_stop(
         log::info!("STOP request from {}, removing client {}", addr, id);
         quote_server
             .remove_client(id)
-            .map_err(|e| TcpServerError::QuoteServerError(e))?;
+            .map_err(TcpServerError::QuoteServerError)?;
     } else {
         log::warn!("STOP request from {} but no client registered", addr);
     }
