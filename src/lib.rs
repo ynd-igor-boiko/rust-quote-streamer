@@ -86,10 +86,73 @@
 #![warn(missing_docs)]
 #![deny(unreachable_pub)]
 
+/// Client representation and its UDP streaming state.
+///
+/// This module defines the [`Client`](client::Client) struct, which stores:
+/// - subscribed tickers,
+/// - UDP socket details,
+/// - per-client communication helpers.
+///
+/// The QuoteServer uses this module to manage client registrations and updates.
 pub mod client;
+
+/// Global timing constants and configuration parameters.
+///
+/// This module stores shared constants such as:
+/// - update intervals,
+/// - retry timeouts,
+/// - keep-alive thresholds,
+/// - network parameters.
+///
+/// These constants define timing behavior across the entire server.
 pub mod defs;
+
+/// Error types used by the quote server, TCP protocol, and CLI utilities.
+///
+/// This module provides strongly typed errors:
+/// - [`QuoteServerError`](errors::QuoteServerError)
+/// - [`TcpServerError`](errors::TcpServerError)
+/// - [`CliError`](errors::CliError)
+///
+/// All modules use these error types for clean and consistent error propagation.
 pub mod errors;
+
+/// Quote generation engine.
+///
+/// The [`QuoteGenerator`](quote_generator::QuoteGenerator) implements
+/// random quote updates using configurable volatility.
+///
+/// The QuoteServer periodically invokes the generator to mutate quotes.
 pub mod quote_generator;
+
+/// Core server managing quotes, subscriptions, background threads,
+/// update loops, and graceful shutdown.
+///
+/// The [`QuoteServer`](quote_server::QuoteServer):
+/// - stores all stock quotes,
+/// - manages concurrent clients,
+/// - spawns the background update thread,
+/// - periodically updates and broadcasts quotes,
+/// - supports graceful shutdown through an atomic flag.
 pub mod quote_server;
+
+/// Data model for stock quotes.
+///
+/// Defines the [`StockQuote`](stock_quote::StockQuote) struct that stores:
+/// - ticker symbol,
+/// - current price,
+/// - timestamp of the last update.
+///
+/// The server uses this model internally and for UDP output formatting.
 pub mod stock_quote;
+
+/// TCP server implementation handling client connections, parsing commands,
+/// keep-alive monitoring, and dispatching updates.
+///
+/// The [`TcpServer`](tcp_server::TcpServer):
+/// - listens for TCP connections,
+/// - spawns handlers per client,
+/// - processes commands (`PING`, `STREAM`, `STOP`),
+/// - integrates with [`QuoteServer`](crate::quote_server::QuoteServer)
+///   to manage subscriptions.
 pub mod tcp_server;
