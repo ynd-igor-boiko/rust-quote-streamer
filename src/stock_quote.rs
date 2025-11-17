@@ -36,6 +36,7 @@ impl StockQuote {
     /// # Examples
     ///
     /// ```
+    /// use quote_server::stock_quote::StockQuote;
     /// let quote = StockQuote::new("AAPL");
     /// assert_eq!(quote.ticker, "AAPL");
     /// ```
@@ -58,6 +59,7 @@ impl StockQuote {
     /// # Example
     ///
     /// ```
+    /// use quote_server::stock_quote::StockQuote;
     /// let q = StockQuote::new("AAPL");
     /// let s = q.to_string();
     /// assert!(s.starts_with("AAPL|"));
@@ -83,6 +85,7 @@ impl StockQuote {
     /// # Example
     ///
     /// ```
+    /// use quote_server::stock_quote::StockQuote;
     /// let raw = "AAPL|123.45|100|1700000000000";
     /// let quote = StockQuote::from_string(raw).unwrap();
     /// assert_eq!(quote.ticker, "AAPL");
@@ -109,6 +112,7 @@ impl StockQuote {
     /// # Example
     ///
     /// ```
+    /// use quote_server::stock_quote::StockQuote;
     /// let q = StockQuote::new("AAPL");
     /// let bytes = q.to_bytes();
     /// assert!(bytes.contains(&b'|'));

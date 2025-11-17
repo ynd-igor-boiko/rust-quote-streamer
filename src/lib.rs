@@ -66,15 +66,15 @@
 //!
 //! ```no_run
 //! use std::sync::Arc;
-//! use stock_server::quote_server::QuoteServer;
-//! use stock_server::tcp_server::TcpServer;
+//! use quote_server::quote_server::QuoteServer;
+//! use quote_server::tcp_server::TcpServer;
 //!
 //! fn main() -> Result<(), Box<dyn std::error::Error>> {
 //!     // Load tickers and initialize QuoteServer
 //!     let qs = Arc::new(QuoteServer::from_config("tickers.txt")?);
 //!
 //!     // Start the background quote generator thread
-//!     qs.start_background()?;
+//!     qs.start()?;
 //!
 //!     // Start the TCP server that manages client subscriptions
 //!     let tcp = TcpServer::new("127.0.0.1:3333", qs.clone())?;

@@ -281,7 +281,7 @@ mod tests {
     fn test_add_and_remove_client() -> Result<(), Box<dyn std::error::Error>> {
         let mut file = NamedTempFile::new()?;
         writeln!(file, "AAPL")?;
-        let mut server = QuoteServer::from_config(file.path())?;
+        let server = QuoteServer::from_config(file.path())?;
 
         let output = Arc::new(Mutex::new(Vec::<String>::new()));
         let output_clone = output.clone();

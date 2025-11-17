@@ -307,9 +307,9 @@ mod tests {
 
     #[test]
     fn test_send_ping_no_server() {
-        let mut stream = TcpStream::connect("127.0.0.1:65000");
+        let stream = TcpStream::connect("127.0.0.1:65000");
         if let Ok(mut s) = stream {
-            let reader = BufReader::new(s.try_clone().unwrap());
+            let mut reader = BufReader::new(s.try_clone().unwrap());
             let result = send_ping(&mut s, &mut reader);
             assert!(result.is_err());
         } else {
