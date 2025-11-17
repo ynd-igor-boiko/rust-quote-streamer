@@ -41,8 +41,8 @@ Clients can connect via TCP to manage subscriptions and receive updates.
 Clone the repository:
 
 ```bash
-git clone <repo url>
-cd quote_server
+git clone https://github.com/Odinsaw/rust-quote-streamer
+cd rust-quote-streamer
 ```
 
 Build the project:
